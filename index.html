@@ -57,14 +57,17 @@
     </div>
 
     <div class="dashboard-grid">
+      <!-- FLOW CARD (menggantikan sensor voltage) -->
       <div class="card">
-        <div class="card-header">Sensor Voltage</div>
+        <div class="card-header">Flow Sekarang</div>
         <div>
-          <span class="card-value" id="numVoltage">--</span>
-          <span class="muted" style="margin-left:8px">Volt</span>
+          <span class="card-value" id="numFlow">--</span>
+          <span class="muted" style="margin-left:8px">L/min</span>
         </div>
+        <div style="margin-top:8px;color:#666">Total: <strong id="totalFlow">--</strong> L</div>
       </div>
 
+      <!-- STATUS CARD tetap untuk turbidity text -->
       <div class="card" id="statusCard" style="border-left:8px solid var(--safe)">
         <div class="card-header">Kondisi Air</div>
         <h3 id="txtStatus" style="margin:8px 0;font-size:1.2rem">--</h3>
@@ -78,13 +81,14 @@
     </div>
 
     <div class="chart-row">
+      <!-- GAUGE now shows ULTRASONIC level (cm) -->
       <div class="card">
-        <div class="card-header">Analog Meter</div>
+        <div class="card-header">Level (Ultrasonic)</div>
         <div class="gauge-wrapper">
           <canvas id="gaugeChart"></canvas>
           <div class="gauge-label-center">
-            <span class="gl-val" id="gaugeVal">0.00</span>
-            <span class="gl-unit">VDC</span>
+            <span class="gl-val" id="gaugeVal">0</span>
+            <span class="gl-unit">cm</span>
           </div>
         </div>
       </div>
@@ -95,10 +99,7 @@
       </div>
     </div>
 
-    <div class="card" style="margin-top:18px">
-      <div class="card-header">Raw JSON (latest /sensors)</div>
-      <pre id="raw" style="white-space:pre-wrap;max-height:140px;overflow:auto;margin:0">-</pre>
-    </div>
+    <!-- RAW JSON removed per request -->
 
   </main>
 
@@ -124,23 +125,26 @@
     const auth = firebase.auth();
 
     const connBadge = document.getElementById('connBadge');
-    const numVoltage = document.getElementById('numVoltage');
+    const numFlow = document.getElementById('numFlow');
+    const totalFlow = document.getElementById('totalFlow');
     const txtStatus = document.getElementById('txtStatus');
     const badgeStatus = document.getElementById('badgeStatus');
     const txtDesc = document.getElementById('txtDesc');
     const gaugeVal = document.getElementById('gaugeVal');
-    const rawEl = document.getElementById('raw');
     const timestampEl = document.getElementById('timestamp');
 
     // ---------- CHARTS SETUP ----------
+    // Gauge: maxUltrasonic (ubah sesuai kebutuhan)
+    const maxUltrasonic = 300; // cm
+
     const ctxG = document.getElementById('gaugeChart').getContext('2d');
     const gaugeChart = new Chart(ctxG, {
       type: 'doughnut',
       data: {
         labels:['val','rest'],
-        datasets:[{data:[0,3.3], backgroundColor:['#2c3e50','#ecf0f1'], borderWidth:0, circumference:180, rotation:270, cutout:'80%'}]
+        datasets:[{data:[0,maxUltrasonic], backgroundColor:['#2c3e50','#ecf0f1'], borderWidth:0, circumference:180, rotation:270, cutout:'80%'}]
       },
-      options:{responsive:true,maintainAspectRatio:false, plugins:{legend:{display:false},tooltip:{enabled:false}}}
+      options:{responsive:true,maintainAspectRatio:false, plugins:{legend:{display:false},tooltip:{enabled:false}}, animation:{duration:400}}
     });
 
     const ctxH = document.getElementById('historyChart').getContext('2d');
@@ -149,13 +153,13 @@
     gradient.addColorStop(1,'rgba(52,152,219,0)');
     const historyChart = new Chart(ctxH, {
       type:'line',
-      data:{labels:[], datasets:[{label:'Voltage', data:[], borderColor:'#3498db', backgroundColor:gradient, fill:true, tension:0.35}]},
+      data:{labels:[], datasets:[{label:'Turbidity (V)', data:[], borderColor:'#3498db', backgroundColor:gradient, fill:true, tension:0.35}]},
       options:{responsive:true,maintainAspectRatio:false,scales:{y:{beginAtZero:true,max:3.5}}}
     });
 
     // ---------- HELPERS ----------
     function setStatusColor(vol){
-      let color = getComputedStyle(document.documentElement).getPropertyValue('--safe');
+      let color = '#27ae60';
       if(vol <= 0.5) color = '#27ae60';
       else if(vol <= 2.5) color = '#f39c12';
       else color = '#c0392b';
@@ -183,7 +187,6 @@
       .catch(err => {
         console.error('Auth err', err);
         connBadge.innerText = 'auth error';
-        // allow manual trigger
       });
 
     document.getElementById('btnForceAuth').addEventListener('click', () => {
@@ -191,54 +194,62 @@
     });
 
     // ---------- DATABASE LISTENER ----------
-    // Your ESP32 writes to /sensors with nested structure:
-    // /sensors/turbidity/voltage
-    // /sensors/turbidity/level
-    // /sensors/turbidity/description
-    // /sensors/ultrasonic/cm
-    // /sensors/flow/flow_lpm
-    // /sensors/flow/total_l
+    // read /sensors structure written by ESP32
     const sensorsRef = db.ref('/sensors');
 
     sensorsRef.on('value', snapshot => {
       const data = snapshot.val();
-      rawEl.innerText = JSON.stringify(data, null, 2);
 
-      // TURBIDITY
+      // TURBIDITY nested
       const turb = data && data.turbidity ? data.turbidity : null;
       const ultr = data && data.ultrasonic ? data.ultrasonic : null;
       const flow = data && data.flow ? data.flow : null;
 
+      // Update Flow card
+      if(flow){
+        const f = Number(flow.flow_lpm) || 0;
+        const tot = Number(flow.total_l) || 0;
+        numFlow.innerText = f.toFixed(2);
+        totalFlow.innerText = tot.toFixed(3);
+      } else {
+        numFlow.innerText = '--';
+        totalFlow.innerText = '--';
+      }
+
+      // Update Turbidity status & history
       if(turb){
         const v = Number(turb.voltage) || 0;
-        numVoltage.innerText = v.toFixed(2);
-        gaugeVal.innerText = v.toFixed(2);
-        txtStatus.innerText = (turb.level) ? turb.level : '—';
-        txtDesc.innerText = (turb.description) ? turb.description : '-';
+        txtStatus.innerText = turb.level ? turb.level : '—';
+        txtDesc.innerText = turb.description ? turb.description : '-';
         setStatusColor(v);
-
-        // push history
         const t = new Date().toLocaleTimeString();
         updateHistoryLabel(t, v);
       } else {
-        numVoltage.innerText = '--';
-        gaugeVal.innerText = '0.00';
         txtStatus.innerText = '--';
+        txtDesc.innerText = '-';
       }
 
-      // ULTRASONIC & FLOW not shown as major cards here but available
-      if(ultr) console.log('ultrasonic cm', ultr.cm);
-      if(flow) console.log('flow', flow.flow_lpm, flow.total_l);
+      // Update Gauge with ultrasonic (cm)
+      if(ultr){
+        let cm = Number(ultr.cm);
+        if(isNaN(cm) || cm < 0) cm = 0;
+        // Limit to maxUltrasonic to avoid negative remainder
+        const val = Math.min(cm, maxUltrasonic);
+        gaugeVal.innerText = val.toFixed(0);
+        gaugeChart.data.datasets[0].data = [val, Math.max(0, maxUltrasonic - val)];
+        gaugeChart.update();
+      } else {
+        gaugeVal.innerText = '0';
+        gaugeChart.data.datasets[0].data = [0, maxUltrasonic];
+        gaugeChart.update();
+      }
 
       timestampEl.innerText = 'Last Update: ' + new Date().toLocaleString();
     }, err => {
       console.error('DB read error', err);
       connBadge.innerText = 'db read error';
-      rawEl.innerText = 'DB read error: ' + (err && err.message ? err.message : String(err));
     });
 
-    // quick REST check if needed (debug)
-    // fetch('https://wtp4-1bb28-default-rtdb.asia-southeast1.firebasedatabase.app/.json').then(r=>r.text()).then(t=>console.log('rest root', t)).catch(e=>console.warn(e));
   </script>
 </body>
 </html>
