@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>WTP monitoring | Dashboard</title>
+  <title>WTP Monitoring | Dashboard</title>
 
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
@@ -102,21 +102,24 @@
 
   </main>
 
-  <!-- Firebase SDK -->
+  <!-- Firebase SDK (compat) -->
   <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-app-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-database-compat.js"></script>
   <script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-auth-compat.js"></script>
 
   <script>
     // ---------- CONFIG ----------
+
+    // UPDATED: firebaseConfig from your wtp4-931da project (apiKey + databaseURL you provided)
     const firebaseConfig = {
-      apiKey: "AIzaSyDuCX-dqHQR8oOEB48De23e7nW-Y8DfGlY",
-      authDomain: "wtp4-1bb28.firebaseapp.com",
-      databaseURL: "https://wtp4-1bb28-default-rtdb.asia-southeast1.firebasedatabase.app",
-      projectId: "wtp4-1bb28",
-      storageBucket: "wtp4-1bb28.appspot.com",
-      messagingSenderId: "201479538168",
-      appId: "1:201479538168:web:45057248c4f694be0c020d"
+      apiKey: "AIzaSyCTKgyF8TGaRmAj54L_d0-334yNiVfiHOY",
+      authDomain: "wtp4-931da.firebaseapp.com",
+      databaseURL: "https://wtp4-931da-default-rtdb.asia-southeast1.firebasedatabase.app",
+      projectId: "wtp4-931da",
+      storageBucket: "wtp4-931da.firebasestorage.app",
+      messagingSenderId: "16010147540",
+      appId: "1:16010147540:web:1a473f012938b835e12d41",
+      measurementId: "G-0XNM8VL0FF"
     };
 
     firebase.initializeApp(firebaseConfig);
@@ -184,8 +187,8 @@
 
       // FLOW
       if(flow){
-        numFlow.innerText=(+flow.flow_lpm).toFixed(2);
-        totalFlow.innerText=(+flow.total_l).toFixed(3);
+        numFlow.innerText=(+flow.flow_lpm || 0).toFixed(2);
+        totalFlow.innerText=(+flow.total_l || 0).toFixed(3);
       }
 
       // TURBIDITY
@@ -208,9 +211,11 @@
       }
 
       timestampEl.innerText="Last Update: "+new Date().toLocaleString();
+    }, err=>{
+      connBadge.innerText = 'DB Error';
+      console.error('DB listener error', err);
     });
 
   </script>
 </body>
 </html>
-
