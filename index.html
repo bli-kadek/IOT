@@ -1,0 +1,175 @@
+<!doctype html>
+<html lang="id">
+<head>
+  <meta charset="utf-8" />
+  <title>WTP Dashboard</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <style>
+    body{font-family: system-ui,Arial;margin:16px;max-width:1000px}
+    header{display:flex;align-items:center;justify-content:space-between}
+    .card{border:1px solid #e0e0e0;padding:12px;border-radius:8px;margin:8px 0}
+    .grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+    pre{background:#fafafa;padding:8px;border-radius:6px;overflow:auto}
+    canvas{max-width:100%}
+    .muted{color:#666;font-size:0.9rem}
+  </style>
+</head>
+<body>
+  <header>
+    <h1>WTP Sensor Dashboard</h1>
+    <div class="muted">Realtime: <span id="status">connecting...</span></div>
+  </header>
+
+  <div class="grid">
+    <div class="card">
+      <h3>Turbidity</h3>
+      <div id="turbidity">—</div>
+    </div>
+
+    <div class="card">
+      <h3>Ultrasonic</h3>
+      <div id="ultrasonic">—</div>
+    </div>
+
+    <div class="card">
+      <h3>Flow</h3>
+      <div id="flow">—</div>
+    </div>
+
+    <div class="card">
+      <h3>Latest JSON</h3>
+      <pre id="raw">—</pre>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>Grafik Turbidity (Volt)</h3>
+    <canvas id="chartTurb" height="120"></canvas>
+  </div>
+
+  <!-- Firebase modular SDK -->
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/9.25.0/firebase-app.js";
+    import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/9.25.0/firebase-auth.js";
+    import { getDatabase, ref, onValue } from "https://www.gstatic.com/firebasejs/9.25.0/firebase-database.js";
+
+    // Chart.js (classic bundle)
+    const script = document.createElement('script');
+    script.src = "https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js";
+    document.head.appendChild(script);
+
+    // ---- Firebase config: ganti dengan config projectmu ----
+    const firebaseConfig = {
+      apiKey: "AIzaSyDuCX-dqHQR8oOEB48De23e7nW-Y8DfGlY",
+      authDomain: "wtp4-1bb28.firebaseapp.com",
+      databaseURL: "https://wtp4-1bb28-default-rtdb.asia-southeast1.firebasedatabase.app",
+      projectId: "wtp4-1bb28",
+      storageBucket: "wtp4-1bb28.appspot.com",
+      messagingSenderId: "201479538168",
+      appId: "1:201479538168:web:45057248c4f694be0c020d",
+    };
+    const app = initializeApp(firebaseConfig);
+    const auth = getAuth(app);
+    const db = getDatabase(app);
+
+    const statusEl = document.getElementById('status');
+    const turbEl = document.getElementById('turbidity');
+    const ultEl = document.getElementById('ultrasonic');
+    const flowEl = document.getElementById('flow');
+    const rawEl = document.getElementById('raw');
+
+    // sign in anonymously (so DB rules that require auth will allow read)
+    statusEl.innerText = 'signing in...';
+    signInAnonymously(auth)
+      .then(()=> statusEl.innerText = 'signed in (anonymous)')
+      .catch(err => statusEl.innerText = 'auth error: ' + err.message);
+
+    onAuthStateChanged(auth, user => {
+      if (user) statusEl.innerText = `signed in (uid: ${user.uid})`;
+      else statusEl.innerText = 'not signed in';
+    });
+
+    // Data buffer for chart (keep last N points)
+    const bufferSize = 40;
+    const timeLabels = [];
+    const turbData = [];
+
+    // Create Chart after Chart.js loaded
+    function createChart() {
+      const ctx = document.getElementById('chartTurb').getContext('2d');
+      // Chart is available on window.Chart after script loads
+      return new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels: timeLabels,
+          datasets: [{
+            label: 'Turbidity (V)',
+            data: turbData,
+            fill: false,
+            tension: 0.25,
+            pointRadius: 2,
+          }]
+        },
+        options: {
+          responsive: true,
+          scales: {
+            x: { display: true, title: { display: true, text: 'Time' } },
+            y: { display: true, title: { display: true, text: 'Voltage (V)' } }
+          }
+        }
+      });
+    }
+
+    // wait Chart.js to load
+    let chartInstance = null;
+    function waitForChartAndStart() {
+      if (window.Chart) {
+        chartInstance = createChart();
+      } else {
+        setTimeout(waitForChartAndStart, 200);
+      }
+    }
+    waitForChartAndStart();
+
+    // Listen to Firebase RTDB /sensors
+    const sensorsRef = ref(db, '/sensors');
+    onValue(sensorsRef, (snap) => {
+      const data = snap.val();
+      rawEl.innerText = JSON.stringify(data, null, 2);
+
+      // Turbidity
+      if (data && data.turbidity) {
+        const v = data.turbidity.voltage ?? '—';
+        const lvl = data.turbidity.level ?? '';
+        const desc = data.turbidity.description ?? '';
+        turbEl.innerHTML = `<strong>${v} V</strong> — ${lvl}<div class="muted">${desc}</div>`;
+
+        // push to chart buffer
+        const t = new Date().toLocaleTimeString();
+        if (turbData.length >= bufferSize) {
+          turbData.shift(); timeLabels.shift();
+        }
+        turbData.push(Number(v));
+        timeLabels.push(t);
+        if (chartInstance) chartInstance.update();
+      } else {
+        turbEl.innerText = 'no data';
+      }
+
+      // Ultrasonic
+      if (data && data.ultrasonic) {
+        const cm = data.ultrasonic.cm;
+        ultEl.innerText = (cm < 0) ? 'out of range' : `${cm} cm`;
+      } else { ultEl.innerText = 'no data'; }
+
+      // Flow
+      if (data && data.flow) {
+        flowEl.innerHTML = `Current: <strong>${data.flow.flow_lpm ?? '—'}</strong> L/min<br>Total: ${data.flow.total_l ?? '—'} L`;
+      } else { flowEl.innerText = 'no data'; }
+    }, (err) => {
+      statusEl.innerText = 'DB read error: ' + err.message;
+    });
+
+  </script>
+</body>
+</html>
