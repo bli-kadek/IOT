@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<title>Control Dashboard</title>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-database-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-auth-compat.js"></script>
+
+<style>
+body {
+  font-family: Arial;
+  background: #f4f6f9;
+  padding: 20px;
+}
+.card {
+  background: white;
+  padding: 20px;
+  border-radius: 10px;
+}
+</style>
+</head>
+
+<body>
+
+<div class="card">
+  <h2>Control Dashboard</h2>
+  <p>PV: <span id="pv">0</span></p>
+  <p>SP: <span id="sp">0</span></p>
+  <p>Time: <span id="time">0</span></p>
+
+  <input type="number" id="inputSP" placeholder="Set SP">
+  <button onclick="updateSP()">Kirim</button>
+
+  <canvas id="chart"></canvas>
+</div>
+
+<script>
+
+// CONFIG
+const firebaseConfig = {
+  apiKey: "AIzaSyCvwLSVButCdf2wURfVCNgei60OsOch9UA",
+  authDomain: "control-f2c8d.firebaseapp.com",
+  databaseURL: "https://control-f2c8d-default-rtdb.asia-southeast1.firebasedatabase.app",
+  projectId: "control-f2c8d"
+};
+
+firebase.initializeApp(firebaseConfig);
+const db = firebase.database();
+firebase.auth().signInAnonymously();
+
+// CHART
+const ctx = document.getElementById('chart').getContext('2d');
+const chart = new Chart(ctx, {
+  type: 'line',
+  data: {
+    labels: [],
+    datasets: [
+      { label: 'PV', data: [], borderColor: 'blue' },
+      { label: 'SP', data: [], borderColor: 'red' }
+    ]
+  }
+});
+
+// UPDATE SP
+function updateSP() {
+  let sp = parseFloat(document.getElementById("inputSP").value);
+  if (!isNaN(sp)) {
+    db.ref('/SP').set(sp);
+  }
+}
+
+// LISTENER
+db.ref('/').on('value', snap => {
+  const d = snap.val();
+  if (!d) return;
+
+  const pv = d.PV || 0;
+  const sp = d.SP || 0;
+  const t = d.time || Date.now()/1000;
+
+  document.getElementById('pv').innerText = pv;
+  document.getElementById('sp').innerText = sp;
+  document.getElementById('time').innerText = new Date(t*1000).toLocaleTimeString();
+
+  chart.data.labels.push(new Date(t*1000).toLocaleTimeString());
+  chart.data.datasets[0].data.push(pv);
+  chart.data.datasets[1].data.push(sp);
+
+  if(chart.data.labels.length > 30){
+    chart.data.labels.shift();
+    chart.data.datasets[0].data.shift();
+    chart.data.datasets[1].data.shift();
+  }
+
+  chart.update();
+});
+
+</script>
+
+</body>
+</html>
